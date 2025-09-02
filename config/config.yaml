@@ -1,0 +1,157 @@
+seed: 42
+mode:
+  # Environment: currently only FlinkEnv-v1
+  env: "FlinkEnv-v1"
+  # Algorithm: morl (multi-objective)
+  algo: morl
+  # Connector: yarn or mock
+  connector: yarn
+# Configurations for the Flink cluster
+flink:
+  savepointDir: "hdfs:///flink/flink-savepoints"
+  yarnRmHttpAddress: "http://$HOSTNAME:8088"
+  flinkHome: "/home/User/code/stream-tuning/flink-2.0.0"
+  hadoopHome: "/home/User/java/hadoop-3.4.1"
+  # Default cluster knobs
+  defaultClusterKnobs:
+    - name: classloader.resolve-order
+      value: "parent-first"
+    - name: state.backend.type
+      value: "rocksdb"
+    - name: execution.checkpointing.dir
+      value: "hdfs:///flink/flink-checkpoints"
+job:
+  # jar file
+  jarPath: "hdfs:///flink/jobs/flink-tune-job-0.1.jar"
+  # The class name for the job execution
+  mainClass: "cn.edu.zju.daily.flink.workload.Nexmark"
+  # The Flink job name to monitor
+  jobName: "insert-into_default_catalog.default_database.nexmark_q3"
+  defaultJobParams: "--query-name q3 --rate-interval-seconds 100000000"
+  baseTimeParamName: "base-time"
+  rateParamName: "event-rates"
+  offlineSourceRate: 200000000
+  onlineSourceRates: [4500000, 1000000, 1500000, 5000000, 500000, 2000000, 2500000, 4000000, 3000000, 3500000]
+# Extra configurations for the environment
+env:
+  # Execution time in seconds. Mock environment will ignore this.
+  jobWarmupSec: 20
+  monitorIntervalSec: 10
+  maxWaitAttempts: 18  # wait for all tasks to run
+  maxMonitorAttempts: 30
+  stableWindowSize: 6
+  savepointSize: 0 # 50000000
+  savepointStore: /home/User/code/stream-tuning/flink-tuner/savepoint-store.db
+  # obj_1: throughputWeight * throughput
+  throughputWeight: 1.8108807160472594e-07
+  # obj_2: resourceWeight * (2 - (core / maxParallelism + memory / maxMemoryMBytes)))
+  resourceWeight: 10
+  maxCoreUsage: 128
+  maxMemoryMBytes: 500000
+  singleObjectiveWeight: [ 0.9, 0.1 ]  # for debugging using sorl
+# Configurations for the tuner
+tuner:
+  # Budget for the total number of steps
+  maxSteps: 50
+  episodeLength: 10
+  trainBatchSize: 32
+  actorLr: 3e-5
+  criticLr: 3e-4
+  alphaLr: 3e-4
+  initialAlpha: 0.01
+  tau: 0.005
+  gamma: 0.99
+  policyClass: "MOGcnPolicy"
+  warmupIter: 3
+  updateIter: 1
+  logIter: 1
+  gradientSteps: 10
+  evalSteps: 5
+  minWeight: 0.1
+  maxWeight: 0.9
+  deltaWeight: 0.2
+  numTasks: 5
+  numWeightCandidates: 7
+  numPopulationBuffers: 100
+  populationBufferSize: 2
+  sparsity: 1.0
+  saveDir: "/home/User/code/stream-tuning/flink-tuner/results/"
+  loadDir: # "/home/User/code/stream-tuning/saved-results/20250820-000906"
+knobs:
+  # Operator names (SQL jobs should leave this empty)
+  operatorNames: [ ]
+  # Operator knobs
+  operatorKnobs:
+    - name: parallelism
+      type: integer
+      default: "1"
+      min: "1"
+      max: "32"
+  excludedClusterKnobPrefixes: [ "state.backend.forst." ]
+  # Global cluster knobs
+  clusterKnobs:
+    - name: parallelism.default
+      type: integer
+      default: "8"
+      min: "1"
+      max: "32"
+    - name: jobmanager.memory.enable-jvm-direct-memory-limit
+      type: boolean
+      default: 'false'
+    - name: taskmanager.memory.managed.fraction
+      type: float
+      default: 0.4
+      min: 0.2
+      max: 0.6
+    - name: taskmanager.memory.network.fraction
+      type: float
+      default: 0.1
+      min: 0.05
+      max: 0.2
+    - name: taskmanager.memory.process.size
+      type: storage_size
+      default: 2048 mb
+      min: 1024 mb
+      max: 3200 mb
+# Observed metrics as observations
+metrics:
+  observed:
+    - name: idleTimeMsPerSecond
+      scope: task
+      min: 0
+      max: 1000
+    - name: backPressuredTimeMsPerSecond
+      scope: task
+      min: 0
+      max: 1000
+    - name: busyTimeMsPerSecond
+      scope: task
+      min: 0
+      max: 1000
+    - name: numRecordsInPerSecond
+      scope: task
+      min: 0
+      max: 10000000
+    - name: numRecordsOutPerSecond
+      scope: task
+      min: 0
+      max: 10000000
+    - name: "numRecordsInPerSecond / busyTimeMsPerSecond"
+      scope: task
+      min: 0
+      max: 1000
+  includedStats:
+    - max
+    - min
+    - avg
+log:
+  levels:
+    root: WARNING
+    connector: DEBUG
+    env: DEBUG
+    algo: DEBUG
+    trainer: DEBUG
+    eval: DEBUG
+    selection: DEBUG
+    conttune: DEBUG
+    ds2: DEBUG
